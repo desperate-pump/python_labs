@@ -1,85 +1,67 @@
-"""Конвертации JSON ↔ CSV без вывода в терминал."""
+"""Задание A: преобразование JSON и CSV."""
 
 import csv
 import json
 from pathlib import Path
 
 
-def _check_paths(
-    input_path: str, output_path: str, input_suffix: str, output_suffix: str,
-) -> tuple[Path, Path]:
-    """Проверить входной файл и расширения обоих путей."""
-    source, target = Path(input_path), Path(output_path)
+def _check_paths(input_path: str, output_path: str, input_ext: str, output_ext: str):
+    """Проверить существование входного файла и расширения путей."""
+    source = Path(input_path)
+    target = Path(output_path)
     if not source.exists():
         raise FileNotFoundError(f"Файл не найден: {source}")
-    if not source.is_file():
-        raise ValueError("Входной путь должен указывать на файл")
-    if source.suffix.lower() != input_suffix or target.suffix.lower() != output_suffix:
-        raise ValueError(f"Ожидаются расширения {input_suffix} → {output_suffix}")
+    if not source.is_file() or source.suffix.lower() != input_ext or target.suffix.lower() != output_ext:
+        raise ValueError("Неверный тип входного или выходного файла")
     return source, target
 
 
-def _unique_object(pairs: list[tuple]) -> dict:
-    """Не допустить потери значения при повторяющемся ключе JSON."""
-    result = dict(pairs)
-    if len(result) != len(pairs):
-        raise ValueError("Ключи JSON-объекта не должны повторяться")
-    return result
-
-
-def _read_csv(csv_path: str) -> tuple[list[str], list[dict[str, str]]]:
-    """Прочитать CSV с уникальным заголовком и одинаковой длиной строк."""
+def _read_csv(path: Path):
+    """Прочитать CSV с заголовком и проверить количество полей."""
     try:
-        with Path(csv_path).open(encoding="utf-8", newline="") as file:
-            reader = csv.DictReader(file, delimiter=",", strict=True)
+        with path.open("r", encoding="utf-8", newline="") as file:
+            reader = csv.DictReader(file, strict=True)
             headers = reader.fieldnames
-            if not headers or any(not key.strip() for key in headers):
-                raise ValueError("CSV пуст или содержит пустые заголовки")
-            if len(set(headers)) != len(headers):
-                raise ValueError("Заголовки CSV не должны повторяться")
-            rows = []
-            for row in reader:
-                if None in row or None in row.values():
-                    raise ValueError(f"Строка CSV {reader.line_num}: число полей не совпадает с заголовком")
-                rows.append(row)
+            if not headers or any(not name.strip() for name in headers):
+                raise ValueError("CSV пуст или не содержит корректного заголовка")
+            if len(headers) != len(set(headers)):
+                raise ValueError("Повторяющиеся заголовки CSV")
+            rows = list(reader)
     except csv.Error as error:
-        raise ValueError(f"Некорректный CSV: {error}") from error
+        raise ValueError("Некорректный CSV") from error
+    if any(None in row or None in row.values() for row in rows):
+        raise ValueError("Количество полей не совпадает с заголовком CSV")
     return headers, rows
 
 
 def json_to_csv(json_path: str, csv_path: str) -> None:
-    """Записать список словарей в CSV; столбцы отсортированы по алфавиту."""
+    """Сохранить список JSON-словарей в CSV."""
     source, target = _check_paths(json_path, csv_path, ".json", ".csv")
-    with source.open(encoding="utf-8") as file:
-        data = json.load(file, object_pairs_hook=_unique_object)
-    if not isinstance(data, list) or not data:
+    with source.open("r", encoding="utf-8") as file:
+        data = json.load(file)
+    if not isinstance(data, list) or not data or not all(isinstance(row, dict) for row in data):
         raise ValueError("Пустой JSON или неподдерживаемая структура")
+
     keys = set()
     for row in data:
-        if not isinstance(row, dict):
-            raise ValueError("Каждый элемент списка JSON должен быть словарём")
         for key, value in row.items():
-            if not key.strip():
-                raise ValueError("Ключи JSON не должны быть пустыми")
-            if not isinstance(value, (str, int, float, bool)):
-                raise ValueError("Допустимы строки, числа и bool; null и вложенные структуры не поддерживаются")
-            # allow_nan=False запрещает NaN и бесконечности, не входящие в JSON.
-            if isinstance(value, float):
-                json.dumps(value, allow_nan=False)
+            if not key.strip() or not isinstance(value, (str, int, float, bool)):
+                raise ValueError("Неверный ключ или значение JSON")
         keys.update(row)
     if not keys:
-        raise ValueError("JSON должен содержать хотя бы один столбец")
+        raise ValueError("JSON не содержит полей")
+
     target.parent.mkdir(parents=True, exist_ok=True)
     with target.open("w", encoding="utf-8", newline="") as file:
-        writer = csv.DictWriter(file, fieldnames=sorted(keys), restval="", lineterminator="\n")
+        writer = csv.DictWriter(file, fieldnames=sorted(keys), restval="")
         writer.writeheader()
         writer.writerows(data)
 
 
 def csv_to_json(csv_path: str, json_path: str) -> None:
-    """Записать строки CSV в JSON; все значения остаются строками."""
+    """Сохранить CSV как список словарей со строковыми значениями."""
     source, target = _check_paths(csv_path, json_path, ".csv", ".json")
-    headers, rows = _read_csv(str(source))
+    _, rows = _read_csv(source)
     target.parent.mkdir(parents=True, exist_ok=True)
     with target.open("w", encoding="utf-8") as file:
         json.dump(rows, file, ensure_ascii=False, indent=2)
