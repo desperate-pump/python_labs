@@ -53,7 +53,7 @@ def json_to_csv(json_path: str, csv_path: str) -> None:
 
     target.parent.mkdir(parents=True, exist_ok=True)
     with target.open("w", encoding="utf-8", newline="") as file:
-        writer = csv.DictWriter(file, fieldnames=sorted(keys), restval="")
+        writer = csv.DictWriter(file, fieldnames=sorted(keys), restval="", lineterminator="\n")
         writer.writeheader()
         writer.writerows(data)
 
