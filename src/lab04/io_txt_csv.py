@@ -1,5 +1,7 @@
 """Чтение TXT и запись CSV для лабораторной работы 4."""
 
+from __future__ import annotations
+
 import csv
 from pathlib import Path
 
